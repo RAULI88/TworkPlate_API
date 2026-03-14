@@ -12,6 +12,9 @@ from def_model_tablas import db, Usuario, Funcionalidad
 from usuario import usuario_bp
 from funcionalidades import func_bp
 
+from flask_jwt_extended import JWTManager
+from auth import auth_bp # Importa el nuevo archivo
+
 # CARGA DE VARIABLES DE ENTORNO
 load_dotenv()
 
