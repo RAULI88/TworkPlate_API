@@ -9,20 +9,28 @@ func_bp = Blueprint('funcionalidad', __name__)
 
 class FuncionalidadAPI(MethodView):
 
+    # ---------------------------------------------------------
+    # ENDPOINT GET: Regresa solo los objetos json_fun como un array
+    # ---------------------------------------------------------
     def get(self):
         try:
+            # Traemos todos los registros
             funcionalidades = Funcionalidad.query.all()
 
-            resultado = []
-            for func in funcionalidades:
-                dict_func = func.to_dict()
-                try:
-                    dict_func['json_fun'] = json.loads(func.json_fun)
-                except:
-                    pass
-                resultado.append(dict_func)
+            # Solo guardaremos el contenido de json_fun en esta lista
+            solo_funcionalidades = []
 
-            return jsonify(resultado), 200
+            for func in funcionalidades:
+                try:
+                    # Convertimos el texto de la DB a un objeto JSON (diccionario)
+                    data_extraida = json.loads(func.json_fun)
+                    solo_funcionalidades.append(data_extraida)
+                except:
+                    # Si algún registro tiene texto corrupto, lo saltamos o lo enviamos como texto
+                    solo_funcionalidades.append({"error": "Formato JSON inválido en este registro"})
+
+            # Retornamos directamente el array de objetos
+            return jsonify(solo_funcionalidades), 200
 
         except Exception as e:
             return jsonify({"error": "Error al obtener funcionalidades", "detalle": str(e)}), 500
