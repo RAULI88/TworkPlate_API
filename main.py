@@ -21,6 +21,9 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "clave-secreta-de-respaldo")
+jwt = JWTManager(app)
+
 # CONFIGURACIÓN DE CONEXIÓN A LA BASE DE DATOS
 DB_USER = os.environ.get("MYSQLUSER")
 DB_PASS = os.environ.get("MYSQLPASSWORD")
@@ -41,7 +44,7 @@ bcrypt = Bcrypt(app)
 # Esto es lo que faltaba para que /api/usuarios y /api/funcionalidades funcionen
 app.register_blueprint(usuario_bp, url_prefix='/api')
 app.register_blueprint(func_bp, url_prefix='/api')
-
+app.register_blueprint(auth_bp, url_prefix='/api')
 # 4. CONTEXTO DE APLICACIÓN
 with app.app_context():
     db.create_all()
