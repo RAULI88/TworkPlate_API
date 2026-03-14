@@ -38,7 +38,7 @@ with app.app_context():
 
 @app.route('/')
 def root():
-    return jsonify({"mensaje": "API conectada y funcionando bajo arquitectura OOP"}), 200
+    return jsonify("API conectada y funcionando"), 200
 
 
 if __name__ == '__main__':
