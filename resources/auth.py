@@ -5,7 +5,7 @@ from flask_jwt_extended import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 from extensions import db
-from models import Usuario
+from models import Usuario, Paciente
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
@@ -55,6 +55,7 @@ class LoginResource(MethodView):
                 'nombre_usuario': usuario.nombre_usuario,
                 'rol': usuario.rol,
                 'id_empleado': usuario.id_empleado,
+                'id_paciente': getattr(usuario, 'id_paciente', None)  # Agregado para que el frontend sepa quién es
             }
         }), 200
 
@@ -74,6 +75,77 @@ class MeResource(MethodView):
         return jsonify({'success': True, 'data': usuario.to_dict()}), 200
 
 
+# ─────────────────────────────────────────────
+# POST /api/auth/registro
+# ─────────────────────────────────────────────
+class RegistroResource(MethodView):
+    def post(self):
+        """Endpoint público para el auto-registro de pacientes."""
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'Body requerido.'}), 400
+
+        # 1. Validar campos obligatorios
+        campos_requeridos = ['nombre', 'apellidos', 'email', 'telefono', 'password']
+        for campo in campos_requeridos:
+            if not data.get(campo):
+                return jsonify({'success': False, 'message': f'El campo {campo} es requerido.'}), 400
+
+        email = data['email'].strip()
+        password = data['password']
+
+        # 2. Verificar que el correo no esté registrado ya en credenciales
+        if Usuario.query.filter_by(nombre_usuario=email).first():
+            return jsonify({'success': False,
+                            'message': 'Este correo electrónico ya está registrado. Intenta iniciar sesión.'}), 409
+
+        try:
+            # 3. Crear el registro en la tabla PACIENTES
+            nuevo_paciente = Paciente(
+                nombre=data['nombre'].strip(),
+                apellidos=data['apellidos'].strip(),
+                email=email,
+                telefono=data['telefono'].strip(),
+                fecha_nacimiento=data.get('fecha_nacimiento'),
+                curp=data.get('curp'),
+                rfc=data.get('rfc')
+            )
+
+            db.session.add(nuevo_paciente)
+            db.session.flush()  # Hace un pre-guardado para generar el ID del paciente
+
+            # 4. Crear las credenciales en la tabla USUARIOS vinculadas a este paciente
+            nuevo_usuario = Usuario(
+                nombre_usuario=email,
+                password_hash=generate_password_hash(password),  # Ajustado al nombre de tu columna
+                rol='Paciente',
+                estado='Activo',
+                id_empleado=None,
+                id_paciente=nuevo_paciente.id_paciente
+            )
+
+            db.session.add(nuevo_usuario)
+
+            # 5. Guardar todo en la base de datos
+            db.session.commit()
+
+            return jsonify({
+                'success': True,
+                'message': 'Cuenta creada exitosamente. Ya puedes iniciar sesión.',
+                'data': {
+                    'id_paciente': nuevo_paciente.id_paciente,
+                    'nombre': nuevo_paciente.nombre,
+                    'email': email,
+                    'rol': 'Paciente'
+                }
+            }), 201
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': f'Error interno del servidor: {str(e)}'}), 500
+
+
 # Registro de rutas
 auth_bp.add_url_rule('/login', view_func=LoginResource.as_view('login'))
 auth_bp.add_url_rule('/me', view_func=MeResource.as_view('me'))
+auth_bp.add_url_rule('/registro', view_func=RegistroResource.as_view('registro'))

@@ -51,11 +51,14 @@ class Usuario(db.Model):
     id_usuario = db.Column(db.Integer, primary_key=True)
     id_empleado = db.Column(db.Integer, db.ForeignKey('empleados.id_empleado',
                                                       onupdate='CASCADE', ondelete='RESTRICT'),
-                            nullable=False, unique=True)
+                            nullable=True, unique=True)
+    id_paciente = db.Column(db.Integer, db.ForeignKey('pacientes.id_paciente',
+                                                      onupdate='CASCADE', ondelete='RESTRICT'),
+                            nullable=True, unique=True)
     nombre_usuario = db.Column(db.String(60), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
     rol = db.Column(
-        db.Enum('Admin', 'Recepcionista', name='rol_enum'),
+        db.Enum('Admin', 'Recepcionista', 'Paciente', name='rol_enum'),
         nullable=False
     )
     estado = db.Column(
@@ -65,15 +68,18 @@ class Usuario(db.Model):
     )
 
     empleado = db.relationship('Empleado', back_populates='usuario')
-
+    paciente = db.relationship('Paciente', backref='credenciales_usuario')
     def to_dict(self):
         return {
             'id_usuario': self.id_usuario,
             'id_empleado': self.id_empleado,
+            'id_paciente': self.id_paciente,
             'nombre_usuario': self.nombre_usuario,
             'rol': self.rol,
             'estado': self.estado,
             'empleado': self.empleado.to_dict() if self.empleado else None,
+            'paciente_vinculado': f"{self.paciente.nombre} {self.paciente.apellidos}" if hasattr(self,
+                                                                                                 'paciente') and self.paciente else None
         }
 
 
