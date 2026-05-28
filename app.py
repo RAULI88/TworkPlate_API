@@ -7,6 +7,7 @@ from extensions import db, jwt, cors
 
 # Importar todos los blueprints de la carpeta resources
 # Importar todos los blueprints de la carpeta resources
+from resources.dashboard import dashboard_bp
 from resources.auth import auth_bp
 from resources.empleados import empleados_bp
 from resources.usuarios import usuarios_bp
@@ -59,6 +60,7 @@ def create_app():
         consultas_bp,
         pagos_bp,
         public_bp,
+        dashboard_bp
     ]
 
     # Se registran todos los endpoints de la API
