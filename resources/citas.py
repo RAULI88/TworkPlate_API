@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from flask import Blueprint, request, jsonify
 from flask.views import MethodView
 from datetime import datetime
@@ -22,6 +23,7 @@ class CitasResource(MethodView):
           - estado: Agendada | En Progreso | Completada | Cancelada
           - id_medico, id_paciente
           - fecha_desde / fecha_hasta (YYYY-MM-DD)
+          - fecha (YYYY-MM-DD) -> Filtra un día exacto y ordena por médico
         """
         query = Cita.query
 
@@ -31,6 +33,15 @@ class CitasResource(MethodView):
             query = query.filter_by(id_medico=id_medico)
         if (id_paciente := request.args.get('id_paciente')):
             query = query.filter_by(id_paciente=id_paciente)
+
+        # --- NUEVO: Filtro por fecha exacta ---
+        if (fecha := request.args.get('fecha')):
+            try:
+                fecha_obj = datetime.strptime(fecha, '%Y-%m-%d').date()
+                query = query.filter(func.date(Cita.fecha_hora) == fecha_obj)
+            except ValueError:
+                return jsonify({'success': False, 'message': 'fecha inválida. Use YYYY-MM-DD.'}), 400
+
         if (fecha_desde := request.args.get('fecha_desde')):
             try:
                 query = query.filter(Cita.fecha_hora >= datetime.strptime(fecha_desde, '%Y-%m-%d'))
@@ -42,7 +53,14 @@ class CitasResource(MethodView):
             except ValueError:
                 return jsonify({'success': False, 'message': 'fecha_hasta inválida.'}), 400
 
-        citas = query.order_by(Cita.fecha_hora.desc()).all()
+        # --- NUEVO: Ordenamiento dinámico ---
+        if request.args.get('fecha'):
+            # Si se pide una fecha específica, ordenamos por médico y luego por hora
+            citas = query.order_by(Cita.id_medico.asc(), Cita.fecha_hora.asc()).all()
+        else:
+            # Comportamiento por defecto (las más recientes primero)
+            citas = query.order_by(Cita.fecha_hora.desc()).all()
+
         return jsonify({
             'success': True,
             'data': [c.to_dict() for c in citas],
