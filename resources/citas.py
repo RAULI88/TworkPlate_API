@@ -5,6 +5,7 @@ from datetime import datetime
 from extensions import db
 from models import Cita, Paciente, Medico, Servicio
 from utils import admin_required, login_required
+from flask_jwt_extended import get_jwt
 
 citas_bp = Blueprint('citas', __name__, url_prefix='/api/citas')
 
@@ -19,22 +20,30 @@ class CitasResource(MethodView):
     @login_required
     def get(self):
         """
-        Lista citas. Filtros opcionales:
-          - estado: Agendada | En Progreso | Completada | Cancelada
-          - id_medico, id_paciente
-          - fecha_desde / fecha_hasta (YYYY-MM-DD)
-          - fecha (YYYY-MM-DD) -> Filtra un día exacto y ordena por médico
+        Lista citas. Filtros opcionales y ordenamiento dinámico.
+        Seguridad: Los pacientes solo ven sus propias citas.
         """
         query = Cita.query
+
+        # --- SEGURIDAD DE LECTURA (RBAC) ---
+        claims = get_jwt()
+        rol = claims.get('rol')
+        id_paciente_token = claims.get('id_paciente')
+
+        if rol == 'Paciente':
+            # Fuerza el filtro para que solo vea las suyas
+            query = query.filter_by(id_paciente=id_paciente_token)
+        else:
+            # Los empleados pueden filtrar por cualquier paciente
+            if (id_paciente := request.args.get('id_paciente')):
+                query = query.filter_by(id_paciente=id_paciente)
+        # -----------------------------------
 
         if (estado := request.args.get('estado')):
             query = query.filter_by(estado=estado)
         if (id_medico := request.args.get('id_medico')):
             query = query.filter_by(id_medico=id_medico)
-        if (id_paciente := request.args.get('id_paciente')):
-            query = query.filter_by(id_paciente=id_paciente)
 
-        # --- NUEVO: Filtro por fecha exacta ---
         if (fecha := request.args.get('fecha')):
             try:
                 fecha_obj = datetime.strptime(fecha, '%Y-%m-%d').date()
@@ -53,12 +62,10 @@ class CitasResource(MethodView):
             except ValueError:
                 return jsonify({'success': False, 'message': 'fecha_hasta inválida.'}), 400
 
-        # --- NUEVO: Ordenamiento dinámico ---
+        # Ordenamiento dinámico
         if request.args.get('fecha'):
-            # Si se pide una fecha específica, ordenamos por médico y luego por hora
             citas = query.order_by(Cita.id_medico.asc(), Cita.fecha_hora.asc()).all()
         else:
-            # Comportamiento por defecto (las más recientes primero)
             citas = query.order_by(Cita.fecha_hora.desc()).all()
 
         return jsonify({
@@ -69,10 +76,17 @@ class CitasResource(MethodView):
 
     @login_required
     def post(self):
-        """Agenda una nueva cita."""
+        """Agenda una nueva cita. Protegido contra suplantación."""
         data = request.get_json()
         if not data:
             return jsonify({'success': False, 'message': 'Body requerido.'}), 400
+
+        # --- SEGURIDAD DE ESCRITURA (RBAC) ---
+        claims = get_jwt()
+        if claims.get('rol') == 'Paciente':
+            # Sobrescribe el ID enviado en el JSON con el ID real del token
+            data['id_paciente'] = claims.get('id_paciente')
+        # -----------------------------------
 
         campos_requeridos = ['id_paciente', 'id_medico', 'id_servicio', 'fecha_hora']
         for campo in campos_requeridos:
@@ -129,13 +143,24 @@ class CitaResource(MethodView):
 
     @login_required
     def get(self, id_cita):
+        """Obtiene una cita específica con protección por dueño."""
         cita = Cita.query.get_or_404(id_cita)
+
+        claims = get_jwt()
+        if claims.get('rol') == 'Paciente' and cita.id_paciente != claims.get('id_paciente'):
+            return jsonify({'success': False, 'message': 'Acceso denegado.'}), 403
+
         return jsonify({'success': True, 'data': cita.to_dict()}), 200
 
     @login_required
     def put(self, id_cita):
-        """Actualiza una cita."""
+        """Actualiza una cita con protección por dueño."""
         cita = Cita.query.get_or_404(id_cita)
+
+        claims = get_jwt()
+        if claims.get('rol') == 'Paciente' and cita.id_paciente != claims.get('id_paciente'):
+            return jsonify({'success': False, 'message': 'Acceso denegado.'}), 403
+
         data = request.get_json()
         if not data:
             return jsonify({'success': False, 'message': 'Body requerido.'}), 400
@@ -165,10 +190,18 @@ class CitaResource(MethodView):
 
     @login_required
     def delete(self, id_cita):
-        """Cancela una cita (soft delete)."""
+        """Cancela una cita (soft delete) con protección por dueño."""
         cita = Cita.query.get_or_404(id_cita)
+
+        # --- SEGURIDAD DE BORRADO (RBAC) ---
+        claims = get_jwt()
+        if claims.get('rol') == 'Paciente' and cita.id_paciente != claims.get('id_paciente'):
+            return jsonify({'success': False, 'message': 'No tienes permiso para cancelar esta cita.'}), 403
+        # -----------------------------------
+
         if cita.estado == 'Completada':
             return jsonify({'success': False, 'message': 'No se puede cancelar una cita completada.'}), 400
+
         cita.estado = 'Cancelada'
         db.session.commit()
         return jsonify({'success': True, 'message': 'Cita cancelada correctamente.'}), 200
@@ -181,8 +214,13 @@ class CitaEstadoResource(MethodView):
 
     @login_required
     def patch(self, id_cita):
-        """Cambia únicamente el estado de una cita."""
+        """Cambia únicamente el estado de una cita. Protegido por dueño."""
         cita = Cita.query.get_or_404(id_cita)
+
+        claims = get_jwt()
+        if claims.get('rol') == 'Paciente' and cita.id_paciente != claims.get('id_paciente'):
+            return jsonify({'success': False, 'message': 'Acceso denegado.'}), 403
+
         data = request.get_json()
         estado = data.get('estado') if data else None
 
