@@ -41,6 +41,7 @@ class LoginResource(MethodView):
         additional_claims = {
             'rol': usuario.rol,
             'id_usuario': usuario.id_usuario,
+            'id_paciente': getattr(usuario, 'id_paciente', None)
         }
         access_token = create_access_token(
             identity=str(usuario.id_usuario),
