@@ -58,7 +58,7 @@ class Usuario(db.Model):
     nombre_usuario = db.Column(db.String(60), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
     rol = db.Column(
-        db.Enum('Admin', 'Recepcionista', 'Paciente', name='rol_enum'),
+        db.Enum('Admin', 'Recepcionista', 'Paciente', 'Medico', name='rol_enum'),
         nullable=False
     )
     estado = db.Column(
